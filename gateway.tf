@@ -9,10 +9,6 @@ terraform {
       source  = "hashicorp/time"
       version = "~> 0.9"
     }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.0"
-    }
   }
 }
 
@@ -406,7 +402,7 @@ resource "aws_iam_instance_profile" "storage_gateway_profile" {
 
 # EBS volume for cache - Oregon region AZ
 resource "aws_ebs_volume" "cache_disk" {
-  availability_zone = "${data.aws_region.current.name}a" # us-west-2a
+  availability_zone = "${data.aws_region.current.name}a"  # us-west-2a
   size              = var.cache_disk_size
   type              = "gp3"
   encrypted         = true
@@ -459,43 +455,23 @@ resource "time_sleep" "wait_for_gateway" {
     aws_volume_attachment.cache_disk_attachment
   ]
 
-  create_duration = "300s" # Wait 5 minutes for gateway to boot
+  create_duration = "600s"  # Wait 10 minutes for gateway to boot and initialize
 }
 
-# Null resource to check gateway readiness
-resource "null_resource" "gateway_health_check" {
-  depends_on = [time_sleep.wait_for_gateway]
-
-  provisioner "local-exec" {
-    command = <<-EOF
-      echo "Waiting for Storage Gateway to be ready..."
-      for i in {1..60}; do
-        if curl -f -m 10 "http://${aws_instance.storage_gateway.private_ip}/?activationRegion=us-west-2" >/dev/null 2>&1; then
-          echo "Gateway is ready!"
-          exit 0
-        fi
-        echo "Attempt $i/60: Gateway not ready yet, waiting 30 seconds..."
-        sleep 30
-      done
-      echo "Gateway failed to become ready after 30 minutes"
-      exit 1
-    EOF
-  }
-
-  triggers = {
-    instance_id = aws_instance.storage_gateway.id
-  }
-}
-
-# Storage Gateway
+# Storage Gateway with longer timeout
 resource "aws_storagegateway_gateway" "file_gateway" {
   gateway_name       = var.gateway_name
   gateway_timezone   = "GMT"
   gateway_type       = "FILE_S3"
   gateway_ip_address = aws_instance.storage_gateway.private_ip
 
+  # Increase timeout for activation
+  timeouts {
+    create = "20m"
+  }
+
   depends_on = [
-    null_resource.gateway_health_check
+    time_sleep.wait_for_gateway
   ]
 }
 
@@ -591,8 +567,8 @@ resource "aws_storagegateway_nfs_file_share" "nfs_share" {
   location_arn = aws_s3_bucket.gateway_bucket.arn
   role_arn     = aws_iam_role.storage_gateway_role.arn
 
-  default_storage_class   = "S3_STANDARD"
-  file_share_name         = "nfs-share"
+  default_storage_class = "S3_STANDARD"
+  file_share_name       = "nfs-share"
   guess_mime_type_enabled = true
   read_only               = false
   requester_pays          = false
