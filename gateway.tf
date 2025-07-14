@@ -419,7 +419,8 @@ resource "aws_instance" "storage_gateway" {
   instance_type          = var.instance_type
   key_name               = var.key_pair_name != "" ? var.key_pair_name : null
   vpc_security_group_ids = [aws_security_group.storage_gateway.id]
-  subnet_id              = aws_subnet.private[0].id
+  subnet_id              = aws_subnet.public[0].id  # Temporarily public for activation
+  associate_public_ip_address = true                    # Assign public IP
   iam_instance_profile   = aws_iam_instance_profile.storage_gateway_profile.name
 
   # Disable source/destination check
@@ -448,39 +449,101 @@ resource "aws_volume_attachment" "cache_disk_attachment" {
   instance_id = aws_instance.storage_gateway.id
 }
 
-# Wait for Storage Gateway to be ready
-resource "time_sleep" "wait_for_gateway" {
-  depends_on = [
-    aws_instance.storage_gateway,
-    aws_volume_attachment.cache_disk_attachment
-  ]
+# IAM Role for Bastion Host (SSM access)
+resource "aws_iam_role" "bastion_role" {
+  name = "${var.gateway_name}-bastion-role"
 
-  create_duration = "600s"  # Wait 10 minutes for gateway to boot and initialize
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
 }
 
-# Storage Gateway with longer timeout
-resource "aws_storagegateway_gateway" "file_gateway" {
-  gateway_name       = var.gateway_name
-  gateway_timezone   = "GMT"
-  gateway_type       = "FILE_S3"
-  gateway_ip_address = aws_instance.storage_gateway.private_ip
+# Attach SSM managed policy to bastion role
+resource "aws_iam_role_policy_attachment" "bastion_ssm_policy" {
+  role       = aws_iam_role.bastion_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
 
-  # Increase timeout for activation
-  timeouts {
-    create = "20m"
+# Instance Profile for Bastion
+resource "aws_iam_instance_profile" "bastion_profile" {
+  name = "${var.gateway_name}-bastion-profile"
+  role = aws_iam_role.bastion_role.name
+}
+
+# Bastion Host for accessing private resources
+resource "aws_instance" "bastion" {
+  ami                         = data.aws_ami.amazon_linux.id
+  instance_type               = "t3.micro"
+  key_name                    = var.key_pair_name != "" ? var.key_pair_name : null
+  vpc_security_group_ids      = [aws_security_group.bastion.id]
+  subnet_id                   = aws_subnet.public[0].id
+  associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.bastion_profile.name
+
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y curl
+  EOF
+  )
+
+  tags = {
+    Name        = "${var.gateway_name}-bastion"
+    Environment = var.environment
+  }
+}
+
+# Security Group for Bastion Host
+resource "aws_security_group" "bastion" {
+  name        = "${var.gateway_name}-bastion-sg"
+  description = "Security group for bastion host"
+  vpc_id      = aws_vpc.main.id
+
+  # SSH access from anywhere (restrict this in production)
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  depends_on = [
-    time_sleep.wait_for_gateway
-  ]
+  # All outbound traffic
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.gateway_name}-bastion-sg"
+    Environment = var.environment
+  }
 }
 
-# Configure cache disk
-resource "aws_storagegateway_cache" "cache" {
-  disk_id     = aws_ebs_volume.cache_disk.id
-  gateway_arn = aws_storagegateway_gateway.file_gateway.arn
+# Get Amazon Linux AMI
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
 
-  depends_on = [aws_volume_attachment.cache_disk_attachment]
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
 # S3 Bucket for Storage Gateway
@@ -531,6 +594,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "gateway_bucket_lifecycle" {
     id     = "storage_gateway_lifecycle"
     status = "Enabled"
 
+    filter {
+      prefix = ""
+    }
+
     transition {
       days          = 30
       storage_class = "STANDARD_IA"
@@ -560,6 +627,31 @@ resource "aws_s3_bucket_notification" "gateway_bucket_notification" {
   depends_on = [aws_s3_bucket.gateway_bucket]
 }
 
+# Storage Gateway - Will be activated manually after deployment
+# Note: Replace ACTIVATION_KEY_HERE with fresh key from curl command
+resource "aws_storagegateway_gateway" "file_gateway" {
+  gateway_name       = var.gateway_name
+  gateway_timezone   = "GMT"
+  gateway_type       = "FILE_S3"
+  activation_key     = "ACTIVATION_KEY_HERE"  # Replace with fresh key tomorrow
+
+  depends_on = [
+    aws_instance.storage_gateway,
+    aws_volume_attachment.cache_disk_attachment
+  ]
+}
+
+# Configure cache disk
+resource "aws_storagegateway_cache" "cache" {
+  disk_id     = "/dev/xvdf"
+  gateway_arn = aws_storagegateway_gateway.file_gateway.arn
+
+  depends_on = [
+    aws_volume_attachment.cache_disk_attachment,
+    aws_storagegateway_gateway.file_gateway
+  ]
+}
+
 # NFS File Share
 resource "aws_storagegateway_nfs_file_share" "nfs_share" {
   client_list  = [var.vpc_cidr]
@@ -584,6 +676,40 @@ resource "aws_storagegateway_nfs_file_share" "nfs_share" {
     aws_storagegateway_cache.cache
   ]
 }
+# resource "aws_storagegateway_cache" "cache" {
+#   disk_id     = "/dev/xvdf"  # Update to match the attached device
+#   gateway_arn = aws_storagegateway_gateway.file_gateway.arn
+#
+#   depends_on = [
+#     aws_volume_attachment.cache_disk_attachment,
+#     aws_storagegateway_gateway.file_gateway
+#   ]
+# }
+
+# NFS File Share - Uncomment after gateway is activated
+# resource "aws_storagegateway_nfs_file_share" "nfs_share" {
+#   client_list  = [var.vpc_cidr]
+#   gateway_arn  = aws_storagegateway_gateway.file_gateway.arn
+#   location_arn = aws_s3_bucket.gateway_bucket.arn
+#   role_arn     = aws_iam_role.storage_gateway_role.arn
+#
+#   default_storage_class = "S3_STANDARD"
+#   file_share_name       = "nfs-share"
+#   guess_mime_type_enabled = true
+#   read_only               = false
+#   requester_pays          = false
+#
+#   nfs_file_share_defaults {
+#     directory_mode = "0755"
+#     file_mode      = "0644"
+#     group_id       = 65534
+#     owner_id       = 65534
+#   }
+#
+#   depends_on = [
+#     aws_storagegateway_cache.cache
+#   ]
+# }
 
 # Outputs
 output "vpc_id" {
@@ -611,24 +737,31 @@ output "nat_gateway_ip" {
   value       = aws_eip.nat.public_ip
 }
 
+output "bastion_ip" {
+  description = "Public IP of the bastion host"
+  value       = aws_instance.bastion.public_ip
+}
+
 output "gateway_ip" {
   description = "Private IP address of the Storage Gateway"
   value       = aws_instance.storage_gateway.private_ip
 }
 
+output "manual_activation_steps" {
+  description = "Steps to manually activate the Storage Gateway"
+  value = <<-EOF
+    1. SSH to bastion host: ssh -i ~/.ssh/${var.key_pair_name != "" ? var.key_pair_name : "your-key"}.pem ec2-user@${aws_instance.bastion.public_ip}
+    2. Get activation key: curl "http://${aws_instance.storage_gateway.private_ip}/?activationRegion=us-west-2"
+    3. Use the activation key in AWS console or uncomment the gateway resource in Terraform
+    
+    Storage Gateway IP: ${aws_instance.storage_gateway.private_ip}
+    Region: us-west-2
+  EOF
+}
+
 output "gateway_public_ip" {
   description = "Public IP address of the Storage Gateway (if assigned)"
   value       = aws_instance.storage_gateway.public_ip
-}
-
-output "nfs_mount_command" {
-  description = "Command to mount the NFS share"
-  value       = "sudo mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${aws_instance.storage_gateway.private_ip}:/${aws_storagegateway_nfs_file_share.nfs_share.file_share_name} /mnt/nfs"
-}
-
-output "gateway_arn" {
-  description = "ARN of the Storage Gateway"
-  value       = aws_storagegateway_gateway.file_gateway.arn
 }
 
 output "s3_bucket_name" {
@@ -641,9 +774,14 @@ output "s3_bucket_arn" {
   value       = aws_s3_bucket.gateway_bucket.arn
 }
 
-output "s3_bucket_region" {
-  description = "Region of the S3 bucket"
-  value       = aws_s3_bucket.gateway_bucket.region
+output "nfs_mount_command" {
+  description = "Command to mount the NFS share"
+  value       = "sudo mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${aws_instance.storage_gateway.private_ip}:/${aws_storagegateway_nfs_file_share.nfs_share.file_share_name} /mnt/nfs"
+}
+
+output "gateway_arn" {
+  description = "ARN of the Storage Gateway"
+  value       = aws_storagegateway_gateway.file_gateway.arn
 }
 
 output "nfs_file_share_arn" {

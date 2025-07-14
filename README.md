@@ -159,3 +159,193 @@ This configuration creates a complete infrastructure stack in Oregon region (us-
 - **S3 bucket** created in us-west-2 for optimal performance
 - **NAT Gateway** for secure internet access from private subnets
 - **Optimized for west coast latency** and AWS Oregon region features
+
+# Alternative approach - Create gateway without auto-activation
+# Uncomment this section if automatic activation continues to fail
+
+# resource "aws_storagegateway_gateway" "file_gateway" {
+#   gateway_name       = var.gateway_name
+#   gateway_timezone   = "GMT"
+#   gateway_type       = "FILE_S3"
+#   
+#   # Manual activation - get key from instance after it's running
+#   # activation_key = "ACTIVATION_KEY_HERE"  # Get this manually
+#   
+#   depends_on = [
+#     aws_instance.storage_gateway,
+#     aws_volume_attachment.cache_disk_attachment
+#   ]
+# }
+
+# Manual activation steps (if needed):
+# 1. Wait for instance to be running
+# 2. Get activation key: 
+#    curl "http://${INSTANCE_IP}/?activationRegion=us-west-2"
+# 3. Add the activation key to the resource above
+# 4. Run terraform apply again
+
+
+---
+
+# AWS Storage Gateway Deployment Guide - Day 2
+
+## Pre-Flight Checklist ✈️
+
+### Prerequisites Confirmed ✅
+- AWS CLI configured with `smc-dev-aws-keyz` key pair
+- Session Manager plugin installed via Homebrew
+- Terraform files ready in current directory
+- Region: Oregon (us-west-2)
+
+## Step-by-Step Deployment
+
+### 1. Initial Infrastructure Deployment
+```bash
+# Clean start
+terraform init
+terraform plan
+terraform apply --auto-approve
+```
+
+**Expected time:** ~8-10 minutes
+
+### 2. Wait for Storage Gateway Initialization
+```bash
+# Give the Storage Gateway time to fully boot
+echo "Waiting 10 minutes for Storage Gateway to initialize..."
+sleep 600
+```
+
+### 3. Get Activation Key via Session Manager
+```bash
+# Connect to bastion
+BASTION_ID=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=*bastion*" "Name=instance-state-name,Values=running" \
+    --query 'Reservations[*].Instances[*].InstanceId' \
+    --output text)
+
+aws ssm start-session --target $BASTION_ID
+```
+
+From bastion session:
+```bash
+# Get Storage Gateway IP
+GATEWAY_IP=$(terraform output -raw gateway_ip)
+
+# Test connectivity
+ping -c 3 $GATEWAY_IP
+
+# Get activation key (look for redirect URL with activationKey parameter)
+curl -v "http://$GATEWAY_IP/?activationRegion=us-west-2"
+```
+
+### 4. Update Terraform with Activation Key
+```bash
+# Exit bastion session
+exit
+
+# Edit the terraform file to replace ACTIVATION_KEY_HERE with actual key
+# Example: QA1VN-R96QT-FPQ10-FJU7L-OH79G
+```
+
+### 5. Complete Storage Gateway Setup
+```bash
+# Apply with activation key
+terraform apply --auto-approve
+```
+
+### 6. Verify NFS Mount Command
+```bash
+# Get mount command for Windows
+terraform output nfs_mount_command
+```
+
+## Key Files Status ✅
+
+### Terraform Configuration
+- ✅ **VPC with public/private subnets** across 2 AZs
+- ✅ **NAT Gateway** for internet access
+- ✅ **VPC Endpoints** (S3 Gateway, Storage Gateway Interface)
+- ✅ **Bastion host** with SSM access in public subnet
+- ✅ **Storage Gateway** in private subnet with cache disk
+- ✅ **S3 bucket** with encryption, versioning, lifecycle rules
+- ✅ **Security groups** with appropriate access
+- ✅ **IAM roles** with minimal required permissions
+
+### Variables Configured
+```hcl
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["us-west-2a", "us-west-2b"]
+key_pair_name      = "smc-dev-aws-keyz"
+gateway_name       = "oregon-file-gateway"
+s3_bucket_name     = "my-oregon-storage-gateway-bucket-12345"
+instance_type      = "m5.xlarge"
+cache_disk_size    = 150
+environment        = "dev"
+```
+
+## Expected Outputs After Completion
+
+```bash
+bastion_ip                = "XX.XX.XX.XX"
+deployment_region         = "us-west-2"
+gateway_arn              = "arn:aws:storagegateway:us-west-2:ACCOUNT:gateway/sgw-XXXXXXXX"
+gateway_ip               = "10.0.X.X"
+manual_activation_steps   = "SSH and curl instructions"
+nat_gateway_ip           = "XX.XX.XX.XX"
+nfs_file_share_arn       = "arn:aws:storagegateway:us-west-2:ACCOUNT:share/share-XXXXXXXX"
+nfs_mount_command        = "sudo mount -t nfs ..."
+private_subnet_ids       = ["subnet-XXXXX", "subnet-XXXXX"]
+public_subnet_ids        = ["subnet-XXXXX", "subnet-XXXXX"]
+s3_bucket_arn           = "arn:aws:s3:::my-oregon-storage-gateway-bucket-12345"
+s3_bucket_name          = "my-oregon-storage-gateway-bucket-12345"
+vpc_cidr                = "10.0.0.0/16"
+vpc_id                  = "vpc-XXXXX"
+```
+
+## Troubleshooting Quick Reference
+
+### If Storage Gateway not responding:
+```bash
+# Wait longer (up to 15 minutes for cold start)
+# Check instance status
+aws ec2 describe-instance-status --instance-ids $GATEWAY_ID
+
+# Restart if needed
+aws ec2 reboot-instances --instance-ids $GATEWAY_ID
+```
+
+### If activation key invalid:
+- Keys expire in ~10 minutes
+- Get fresh key with same curl command
+- Update terraform and apply immediately
+
+### If Session Manager fails:
+- Check bastion has SSM role attached
+- Wait 5 minutes and retry
+- Restart bastion if needed
+
+## Success Criteria ✅
+
+After completion, you should have:
+1. ✅ VPC with proper networking
+2. ✅ Storage Gateway activated and healthy
+3. ✅ NFS share accessible from VPC
+4. ✅ S3 bucket with files appearing when written to NFS
+5. ✅ Working mount command for Windows server
+
+## Clean Shutdown Tonight
+```bash
+terraform destroy --auto-approve
+```
+
+## Fresh Start Tomorrow
+```bash
+terraform apply --auto-approve
+# Then follow steps 2-6 above
+```
+
+---
+**Tomorrow we WILL get this working! 🚀**
+
+The infrastructure is solid, we just need patience for the Storage Gateway initialization timing.
