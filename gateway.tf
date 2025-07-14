@@ -402,7 +402,7 @@ resource "aws_iam_instance_profile" "storage_gateway_profile" {
 
 # EBS volume for cache - Oregon region AZ
 resource "aws_ebs_volume" "cache_disk" {
-  availability_zone = "${data.aws_region.current.name}a"  # us-west-2a
+  availability_zone = "${data.aws_region.current.name}a" # us-west-2a
   size              = var.cache_disk_size
   type              = "gp3"
   encrypted         = true
@@ -415,13 +415,13 @@ resource "aws_ebs_volume" "cache_disk" {
 
 # EC2 Instance for Storage Gateway
 resource "aws_instance" "storage_gateway" {
-  ami                    = data.aws_ami.storage_gateway.id
-  instance_type          = var.instance_type
-  key_name               = var.key_pair_name != "" ? var.key_pair_name : null
-  vpc_security_group_ids = [aws_security_group.storage_gateway.id]
-  subnet_id              = aws_subnet.public[0].id  # Temporarily public for activation
+  ami                         = data.aws_ami.storage_gateway.id
+  instance_type               = var.instance_type
+  key_name                    = var.key_pair_name != "" ? var.key_pair_name : null
+  vpc_security_group_ids      = [aws_security_group.storage_gateway.id]
+  subnet_id                   = aws_subnet.public[0].id # Temporarily public for activation
   associate_public_ip_address = true                    # Assign public IP
-  iam_instance_profile   = aws_iam_instance_profile.storage_gateway_profile.name
+  iam_instance_profile        = aws_iam_instance_profile.storage_gateway_profile.name
 
   # Disable source/destination check
   source_dest_check = false
@@ -630,10 +630,10 @@ resource "aws_s3_bucket_notification" "gateway_bucket_notification" {
 # Storage Gateway - Will be activated manually after deployment
 # Note: Replace ACTIVATION_KEY_HERE with fresh key from curl command
 resource "aws_storagegateway_gateway" "file_gateway" {
-  gateway_name       = var.gateway_name
-  gateway_timezone   = "GMT"
-  gateway_type       = "FILE_S3"
-  activation_key     = "ACTIVATION_KEY_HERE"  # Replace with fresh key tomorrow
+  gateway_name     = var.gateway_name
+  gateway_timezone = "GMT"
+  gateway_type     = "FILE_S3"
+  activation_key   = "ACTIVATION_KEY_HERE" # Replace with fresh key tomorrow
 
   depends_on = [
     aws_instance.storage_gateway,
@@ -659,8 +659,8 @@ resource "aws_storagegateway_nfs_file_share" "nfs_share" {
   location_arn = aws_s3_bucket.gateway_bucket.arn
   role_arn     = aws_iam_role.storage_gateway_role.arn
 
-  default_storage_class = "S3_STANDARD"
-  file_share_name       = "nfs-share"
+  default_storage_class   = "S3_STANDARD"
+  file_share_name         = "nfs-share"
   guess_mime_type_enabled = true
   read_only               = false
   requester_pays          = false
@@ -749,7 +749,7 @@ output "gateway_ip" {
 
 output "manual_activation_steps" {
   description = "Steps to manually activate the Storage Gateway"
-  value = <<-EOF
+  value       = <<-EOF
     1. SSH to bastion host: ssh -i ~/.ssh/${var.key_pair_name != "" ? var.key_pair_name : "your-key"}.pem ec2-user@${aws_instance.bastion.public_ip}
     2. Get activation key: curl "http://${aws_instance.storage_gateway.private_ip}/?activationRegion=us-west-2"
     3. Use the activation key in AWS console or uncomment the gateway resource in Terraform
