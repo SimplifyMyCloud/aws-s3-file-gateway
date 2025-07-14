@@ -5,27 +5,46 @@ This Terraform configuration deploys an AWS Storage Gateway File Gateway in the 
 ## Architecture
 
 ```
-VPC (us-west-2)
-├── Private Subnet
-│   └── EC2 Instance (Storage Gateway)
-│       ├── Security Group (NFS, HTTP, HTTPS)
-│       └── EBS Cache Volume (150GB)
-├── S3 Bucket (Oregon)
-│   ├── Server-side Encryption
-│   ├── Versioning Enabled
-│   ├── Public Access Blocked
-│   └── Lifecycle Rules
+Oregon Region (us-west-2)
+├── VPC (10.0.0.0/16)
+│   ├── Public Subnets (10.0.0.0/24, 10.0.1.0/24)
+│   │   ├── Internet Gateway
+│   │   └── NAT Gateway
+│   ├── Private Subnets (10.0.10.0/24, 10.0.11.0/24)
+│   │   └── EC2 Instance (Storage Gateway)
+│   │       ├── Security Group (NFS, HTTP, HTTPS)
+│   │       └── EBS Cache Volume (150GB)
+│   ├── VPC Endpoints
+│   │   ├── S3 Gateway Endpoint
+│   │   └── Storage Gateway Interface Endpoint
+│   └── S3 Bucket (Oregon)
+│       ├── Server-side Encryption
+│       ├── Versioning Enabled
+│       ├── Public Access Blocked
+│       └── Lifecycle Rules
 └── NFS File Share
-    └── Accessible from VPC CIDR
+    └── Accessible from VPC CIDR (10.0.0.0/16)
 ```
 
 ## Prerequisites
 
 1. **AWS CLI configured** with appropriate credentials
 2. **Terraform installed** (version 1.0+)
-3. **Existing VPC and private subnet** in Oregon region
-4. **EC2 Key Pair** created in Oregon region
-5. **Proper IAM permissions** for creating Storage Gateway resources
+3. **EC2 Key Pair** created in Oregon region
+4. **Proper IAM permissions** for creating VPC and Storage Gateway resources
+
+## Features
+
+### **Complete Infrastructure**
+- **VPC with public/private subnets** across multiple AZs
+- **NAT Gateway** for internet access from private subnets
+- **VPC Endpoints** for S3 and Storage Gateway (reduced egress costs)
+- **Security Groups** with least-privilege access
+
+### **Cost Optimization**
+- **VPC Endpoints** reduce NAT Gateway data transfer costs
+- **S3 Lifecycle rules** automatically tier data to cheaper storage
+- **Intelligent subnet design** minimizes cross-AZ traffic
 
 ## S3 Bucket Features
 
@@ -59,8 +78,8 @@ The S3 bucket is configured with enterprise-grade features:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `vpc_id` | VPC ID in Oregon region | Required |
-| `subnet_id` | Private subnet ID | Required |
+| `vpc_cidr` | VPC CIDR block | `10.0.0.0/16` |
+| `availability_zones` | AZs for subnets | `["us-west-2a", "us-west-2b"]` |
 | `key_pair_name` | EC2 Key Pair name | Required |
 | `s3_bucket_name` | S3 bucket name (globally unique) | Required |
 | `gateway_name` | Storage Gateway name | `file-gateway` |
@@ -134,7 +153,9 @@ For AWS Storage Gateway specific issues, refer to:
 
 ## Regional Considerations
 
-This configuration is specifically designed for Oregon region (us-west-2):
-- S3 bucket created in us-west-2
-- EC2 instance in us-west-2a availability zone
-- Optimized for west coast latency
+This configuration creates a complete infrastructure stack in Oregon region (us-west-2):
+- **Multi-AZ deployment** for high availability
+- **VPC Endpoints** to minimize internet egress costs
+- **S3 bucket** created in us-west-2 for optimal performance
+- **NAT Gateway** for secure internet access from private subnets
+- **Optimized for west coast latency** and AWS Oregon region features
