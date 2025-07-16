@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(aws sts:*)",
+      "Bash(aws configure get:*)",
+      "Bash(aws ec2:*)",
+      "Bash(aws s3:*)",
+      "Bash(aws storagegateway list-gateways:*)",
+      "Bash(aws storagegateway describe-gateway-information:*)",
+      "Bash(aws storagegateway list-file-shares:*)",
+      "Bash(aws storagegateway describe-nfs-file-shares:*)",
+      "Bash(aws iam list-roles:*)",
+      "Bash(aws iam get-role:*)",
+      "Bash(chmod:*)",
+      "Bash(terraform:*)",
+      "Bash(mv:*)",
+      "Bash(./import-existing-resources.sh:*)",
+      "Bash(ls:*)",
+      "Bash(aws storagegateway set-smb-guest-password:*)",
+      "Bash(aws storagegateway describe-smb-settings:*)",
+      "Bash(aws storagegateway update-smb-security-strategy:*)",
+      "Bash(aws storagegateway update-smb-file-share-visibility:*)",
+      "Bash(aws storagegateway describe-smb-file-shares:*)",
+      "Bash(aws storagegateway:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": []
+  }
+}
