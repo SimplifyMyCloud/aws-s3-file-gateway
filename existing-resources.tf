@@ -37,7 +37,7 @@ data "aws_s3_bucket" "existing_gateway_bucket" {
 
 # Existing S3 bucket
 resource "aws_s3_bucket" "gateway_bucket" {
-  bucket = "smc-gateway-bucket-test-001"
+  bucket        = "smc-gateway-bucket-test-001"
   force_destroy = false
 
   tags = {
@@ -60,16 +60,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "gateway_bucket_en
 
 # Existing Storage Gateway
 resource "aws_storagegateway_gateway" "file_gateway" {
-  gateway_name       = "smc-gateway-test-001"
-  gateway_timezone   = "GMT-8:00"
-  gateway_type       = "FILE_S3"
-  activation_key     = "IMPORTED-GATEWAY-KEY"  # Placeholder for imported gateway
-  
+  gateway_name     = "smc-gateway-test-001"
+  gateway_timezone = "GMT-8:00"
+  gateway_type     = "FILE_S3"
+  activation_key   = "IMPORTED-GATEWAY-KEY" # Placeholder for imported gateway
+
   tags = {
     Name        = "smc-gateway-test-001"
     Environment = "test"
   }
-  
+
   # These are only needed for initial activation, not for imported resources
   lifecycle {
     ignore_changes = [
@@ -82,16 +82,16 @@ resource "aws_storagegateway_gateway" "file_gateway" {
 
 # Existing EC2 instance (Storage Gateway host)
 resource "aws_instance" "storage_gateway" {
-  ami                    = "ami-0ade39029d5e5d2f6"  # Storage Gateway AMI
+  ami                    = "ami-0ade39029d5e5d2f6" # Storage Gateway AMI
   instance_type          = "m5.xlarge"
-  subnet_id              = "subnet-b484d5cd"  # Default subnet us-west-2b
+  subnet_id              = "subnet-b484d5cd" # Default subnet us-west-2b
   vpc_security_group_ids = ["sg-0a2367153a35ce4ab"]
   key_name               = "smc-dev-aws-keyz"
-  
+
   tags = {
     Name = "storagegateway-wizard 428c405b"
   }
-  
+
   # Ignore changes to wizard-generated tags
   lifecycle {
     ignore_changes = [
@@ -105,16 +105,16 @@ resource "aws_instance" "storage_gateway" {
 
 # Existing EBS volume (cache disk)
 resource "aws_ebs_volume" "cache_disk" {
-  availability_zone = "us-west-2b"  # Matches actual AZ
+  availability_zone = "us-west-2b" # Matches actual AZ
   size              = 150
   type              = "gp3"
-  encrypted         = false  # Matches actual encryption status
+  encrypted         = false # Matches actual encryption status
 
   tags = {
-    Name        = "storagegateway-wizard 428c405b"  # Matches actual name
+    Name        = "storagegateway-wizard 428c405b" # Matches actual name
     Environment = "test"
   }
-  
+
   # Ignore changes to wizard-generated tags
   lifecycle {
     ignore_changes = [
@@ -134,17 +134,17 @@ resource "aws_volume_attachment" "cache_disk_attachment" {
 
 # Existing NFS file share
 resource "aws_storagegateway_nfs_file_share" "nfs_share" {
-  client_list  = ["0.0.0.0/0"]  # Currently open to all - should be restricted
+  client_list  = ["0.0.0.0/0"] # Currently open to all - should be restricted
   gateway_arn  = aws_storagegateway_gateway.file_gateway.arn
   location_arn = aws_s3_bucket.gateway_bucket.arn
   role_arn     = "arn:aws:iam::288782039514:role/service-role/StorageGatewayBucketAccessRole17526444934170.04348896652349399"
 
-  default_storage_class = "S3_STANDARD"
-  file_share_name       = "smc-gateway-bucket-test-001"
+  default_storage_class   = "S3_STANDARD"
+  file_share_name         = "smc-gateway-bucket-test-001"
   guess_mime_type_enabled = true
   read_only               = false
   requester_pays          = false
-  object_acl              = "bucket-owner-full-control"  # Matches actual setting
+  object_acl              = "bucket-owner-full-control" # Matches actual setting
 
   nfs_file_share_defaults {
     directory_mode = "0777"
@@ -152,7 +152,7 @@ resource "aws_storagegateway_nfs_file_share" "nfs_share" {
     group_id       = 65534
     owner_id       = 65534
   }
-  
+
   # Ignore bucket_region as it's computed
   lifecycle {
     ignore_changes = [
@@ -202,14 +202,14 @@ data "aws_ami" "windows_server" {
 resource "aws_security_group" "windows_demo" {
   name        = "smc-gateway-windows-demo-sg"
   description = "Security group for Windows demo instance"
-  vpc_id      = "vpc-93884feb"  # Default VPC
+  vpc_id      = "vpc-93884feb" # Default VPC
 
   # RDP access
   ingress {
     from_port   = 3389
     to_port     = 3389
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Open for demo - restrict in production
+    cidr_blocks = ["0.0.0.0/0"] # Open for demo - restrict in production
   }
 
   # SMB/CIFS access
@@ -217,7 +217,7 @@ resource "aws_security_group" "windows_demo" {
     from_port   = 445
     to_port     = 445
     protocol    = "tcp"
-    cidr_blocks = ["172.31.0.0/16"]  # VPC CIDR
+    cidr_blocks = ["172.31.0.0/16"] # VPC CIDR
   }
 
   # All outbound traffic
@@ -238,10 +238,10 @@ resource "aws_security_group" "windows_demo" {
 # Windows EC2 instance for SMB demo
 resource "aws_instance" "windows_demo" {
   ami                    = data.aws_ami.windows_server.id
-  instance_type          = "t3.medium"  # Minimum for Windows
-  key_name               = "smc-dev-aws-keyz-rsa"  # RSA key pair for Windows password decryption
+  instance_type          = "t3.medium"            # Minimum for Windows
+  key_name               = "smc-dev-aws-keyz-rsa" # RSA key pair for Windows password decryption
   vpc_security_group_ids = [aws_security_group.windows_demo.id]
-  subnet_id              = "subnet-b484d5cd"  # Same subnet as Storage Gateway
+  subnet_id              = "subnet-b484d5cd" # Same subnet as Storage Gateway
 
   user_data = <<-EOF
     <powershell>
@@ -296,8 +296,8 @@ Write-Host "S3 Bucket: smc-gateway-bucket-test-001" -ForegroundColor Cyan
 
 # Additional S3 bucket for SMB share (Storage Gateway doesn't allow overlapping locations)
 resource "aws_s3_bucket" "smb_demo_bucket" {
-  bucket = "smc-gateway-smb-bucket-test-001"
-  force_destroy = true  # For demo purposes
+  bucket        = "smc-gateway-smb-bucket-test-001"
+  force_destroy = true # For demo purposes
 
   tags = {
     Name        = "smc-gateway-smb-bucket-test-001"

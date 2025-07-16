@@ -37,7 +37,7 @@ variable "key_pair_name" {
 variable "allowed_cidr" {
   description = "CIDR block allowed to access NFS share"
   type        = string
-  default     = "0.0.0.0/0"  # Demo only - restrict in production
+  default     = "0.0.0.0/0" # Demo only - restrict in production
 }
 
 # Data sources
@@ -55,7 +55,7 @@ data "aws_subnets" "default" {
 data "aws_ami" "storage_gateway" {
   most_recent = true
   owners      = ["amazon"]
-  
+
   filter {
     name   = "name"
     values = ["aws-storage-gateway-*"]
@@ -75,7 +75,7 @@ data "aws_ami" "windows_server" {
 # S3 bucket for file gateway
 resource "aws_s3_bucket" "gateway_bucket" {
   bucket        = var.s3_bucket_name
-  force_destroy = true  # Demo only - allows easy cleanup
+  force_destroy = true # Demo only - allows easy cleanup
 
   tags = {
     Name        = "${var.demo_name}-bucket"
@@ -121,7 +121,7 @@ resource "aws_security_group" "storage_gateway" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Demo only
+    cidr_blocks = ["0.0.0.0/0"] # Demo only
   }
 
   # ICMP for ping
@@ -256,7 +256,7 @@ resource "aws_security_group" "windows_demo" {
     from_port   = 3389
     to_port     = 3389
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Demo only
+    cidr_blocks = ["0.0.0.0/0"] # Demo only
   }
 
   # SMB/CIFS access
@@ -292,7 +292,7 @@ resource "aws_security_group" "windows_demo" {
 resource "aws_instance" "windows_demo" {
   ami                    = data.aws_ami.windows_server.id
   instance_type          = "t3.medium"
-  key_name               = "${var.key_pair_name}-rsa"  # RSA key for Windows
+  key_name               = "${var.key_pair_name}-rsa" # RSA key for Windows
   vpc_security_group_ids = [aws_security_group.windows_demo.id]
   subnet_id              = data.aws_subnets.default.ids[0]
 
