@@ -1,6 +1,3 @@
-# Reverse-engineered Terraform configuration for existing AWS resources
-# This file represents the actual resources found in your AWS account
-
 terraform {
   required_providers {
     aws = {
@@ -14,28 +11,12 @@ provider "aws" {
   region = "us-west-2"
 }
 
-# Data source for existing S3 bucket
-data "aws_s3_bucket" "existing_gateway_bucket" {
+# Data source for S3 bucket
+data "aws_s3_bucket" "_gateway_bucket" {
   bucket = "smc-gateway-bucket-test-001"
 }
 
-# Data source for existing Storage Gateway - commented out due to disk path issue
-# data "aws_storagegateway_local_disk" "existing_cache_disk" {
-#   disk_path   = "/dev/xvdb"
-#   gateway_arn = "arn:aws:storagegateway:us-west-2:288782039514:gateway/sgw-93C3A8FA"
-# }
-
-# Import existing resources
-# To import these resources, run:
-# terraform import aws_s3_bucket.gateway_bucket smc-gateway-bucket-test-001
-# terraform import aws_s3_bucket_server_side_encryption_configuration.gateway_bucket_encryption smc-gateway-bucket-test-001
-# terraform import aws_storagegateway_gateway.file_gateway arn:aws:storagegateway:us-west-2:288782039514:gateway/sgw-93C3A8FA
-# terraform import aws_storagegateway_nfs_file_share.nfs_share arn:aws:storagegateway:us-west-2:288782039514:share/share-43F1D627
-# terraform import aws_instance.storage_gateway i-08d75b4932af35755
-# terraform import aws_ebs_volume.cache_disk vol-0706eb089af70796f
-# terraform import aws_volume_attachment.cache_disk_attachment /dev/sdb:vol-0706eb089af70796f:i-08d75b4932af35755
-
-# Existing S3 bucket
+# S3 bucket
 resource "aws_s3_bucket" "gateway_bucket" {
   bucket        = "smc-gateway-bucket-test-001"
   force_destroy = false
@@ -47,7 +28,7 @@ resource "aws_s3_bucket" "gateway_bucket" {
   }
 }
 
-# Existing S3 bucket encryption (AES256)
+# S3 bucket encryption (AES256)
 resource "aws_s3_bucket_server_side_encryption_configuration" "gateway_bucket_encryption" {
   bucket = aws_s3_bucket.gateway_bucket.id
 
@@ -58,7 +39,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "gateway_bucket_en
   }
 }
 
-# Existing Storage Gateway
+# Storage Gateway
 resource "aws_storagegateway_gateway" "file_gateway" {
   gateway_name     = "smc-gateway-test-001"
   gateway_timezone = "GMT-8:00"
@@ -80,7 +61,7 @@ resource "aws_storagegateway_gateway" "file_gateway" {
   }
 }
 
-# Existing EC2 instance (Storage Gateway host)
+# EC2 instance (Storage Gateway host)
 resource "aws_instance" "storage_gateway" {
   ami                    = "ami-0ade39029d5e5d2f6" # Storage Gateway AMI
   instance_type          = "m5.xlarge"
@@ -103,7 +84,7 @@ resource "aws_instance" "storage_gateway" {
   }
 }
 
-# Existing EBS volume (cache disk)
+# EBS volume (cache disk)
 resource "aws_ebs_volume" "cache_disk" {
   availability_zone = "us-west-2b" # Matches actual AZ
   size              = 150
@@ -125,14 +106,14 @@ resource "aws_ebs_volume" "cache_disk" {
   }
 }
 
-# Existing volume attachment
+# volume attachment
 resource "aws_volume_attachment" "cache_disk_attachment" {
   device_name = "/dev/sdb"
   volume_id   = aws_ebs_volume.cache_disk.id
   instance_id = aws_instance.storage_gateway.id
 }
 
-# Existing NFS file share
+# NFS file share
 resource "aws_storagegateway_nfs_file_share" "nfs_share" {
   client_list  = ["0.0.0.0/0"] # Currently open to all - should be restricted
   gateway_arn  = aws_storagegateway_gateway.file_gateway.arn
@@ -161,24 +142,24 @@ resource "aws_storagegateway_nfs_file_share" "nfs_share" {
   }
 }
 
-# Outputs for existing resources
-output "existing_gateway_arn" {
-  description = "ARN of the existing Storage Gateway"
+# Outputs for  resources
+output "_gateway_arn" {
+  description = "ARN of the  Storage Gateway"
   value       = aws_storagegateway_gateway.file_gateway.arn
 }
 
-output "existing_s3_bucket_name" {
-  description = "Name of the existing S3 bucket"
+output "_s3_bucket_name" {
+  description = "Name of the  S3 bucket"
   value       = aws_s3_bucket.gateway_bucket.bucket
 }
 
-output "existing_nfs_file_share_arn" {
-  description = "ARN of the existing NFS file share"
+output "_nfs_file_share_arn" {
+  description = "ARN of the  NFS file share"
   value       = aws_storagegateway_nfs_file_share.nfs_share.arn
 }
 
-output "existing_instance_id" {
-  description = "ID of the existing Storage Gateway EC2 instance"
+output "_instance_id" {
+  description = "ID of the  Storage Gateway EC2 instance"
   value       = aws_instance.storage_gateway.id
 }
 
@@ -317,37 +298,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "smb_bucket_encryp
   }
 }
 
-# SMB File Share - Note: Create manually via console for demo
-# The File Gateway type doesn't support both NFS and SMB shares simultaneously
-# For demo purposes, you can create an SMB share manually in the AWS console
-# using the SMB bucket created below.
-
-# resource "aws_storagegateway_smb_file_share" "smb_share" {
-#   authentication    = "GuestAccess"  # For demo purposes
-#   gateway_arn       = aws_storagegateway_gateway.file_gateway.arn
-#   location_arn      = aws_s3_bucket.smb_demo_bucket.arn
-#   role_arn          = "arn:aws:iam::288782039514:role/service-role/StorageGatewayBucketAccessRole17526444934170.04348896652349399"
-#   
-#   file_share_name = "smc-gateway-smb-share"
-#   
-#   # Allow guest access for demo
-#   default_storage_class = "S3_STANDARD"
-#   guess_mime_type_enabled = true
-#   read_only = false
-#   requester_pays = false
-#   
-#   # Valid users for SMB (empty for guest access)
-#   valid_user_list = []
-#   
-#   tags = {
-#     Name        = "smc-gateway-smb-share"
-#     Environment = "test"
-#     Purpose     = "Demo"
-#   }
-# }
-
 output "nfs_mount_command" {
-  description = "Command to mount the existing NFS share"
+  description = "Command to mount the  NFS share"
   value       = "sudo mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 172.31.30.248:/smc-gateway-bucket-test-001 /mnt/nfs"
 }
 
