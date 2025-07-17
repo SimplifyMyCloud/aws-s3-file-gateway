@@ -160,6 +160,7 @@ This configuration creates a complete infrastructure stack in Oregon region (us-
 - **NAT Gateway** for secure internet access from private subnets
 - **Optimized for west coast latency** and AWS Oregon region features
 
+```
 # Alternative approach - Create gateway without auto-activation
 # Uncomment this section if automatic activation continues to fail
 
@@ -183,11 +184,11 @@ This configuration creates a complete infrastructure stack in Oregon region (us-
 #    curl "http://${INSTANCE_IP}/?activationRegion=us-west-2"
 # 3. Add the activation key to the resource above
 # 4. Run terraform apply again
-
+```
 
 ---
 
-# AWS Storage Gateway Deployment Guide - Day 2
+# AWS Storage Gateway Deployment Guide
 
 ## Pre-Flight Checklist ✈️
 
@@ -333,19 +334,3 @@ After completion, you should have:
 3. ✅ NFS share accessible from VPC
 4. ✅ S3 bucket with files appearing when written to NFS
 5. ✅ Working mount command for Windows server
-
-## Clean Shutdown Tonight
-```bash
-terraform destroy --auto-approve
-```
-
-## Fresh Start Tomorrow
-```bash
-terraform apply --auto-approve
-# Then follow steps 2-6 above
-```
-
----
-**Tomorrow we WILL get this working! 🚀**
-
-The infrastructure is solid, we just need patience for the Storage Gateway initialization timing.
